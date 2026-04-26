@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARIA — M&A Intelligence Platform</title>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    * { box-sizing: border-box; }
+    html { background: #08090e; }
+    body { background: #08090e; min-height: 100vh; }
+
+    /* ── Pulse ring for running agents ─────────────────────────────────── */
+    @keyframes pulse-ring {
+      0%   { box-shadow: 0 0 0 0   rgba(99, 179, 237, 0.45); }
+      70%  { box-shadow: 0 0 0 7px rgba(99, 179, 237, 0); }
+      100% { box-shadow: 0 0 0 0   rgba(99, 179, 237, 0); }
+    }
+    .agent-running { animation: pulse-ring 1.6s ease-out infinite; }
+
+    /* ── Shimmer progress bar ──────────────────────────────────────────── */
+    @keyframes shimmer {
+      0%   { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .shimmer-bar {
+      background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 40%, #93c5fd 50%, #60a5fa 60%, #3b82f6 100%);
+      background-size: 200% 100%;
+      animation: shimmer 1.8s linear infinite;
+    }
+
+    /* ── Log entry fade-in ─────────────────────────────────────────────── */
+    @keyframes log-in {
+      from { opacity: 0; transform: translateY(3px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .log-in { animation: log-in 0.15s ease-out forwards; }
+
+    /* ── Gradient headline ─────────────────────────────────────────────── */
+    .grad-text {
+      background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #34d399 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ── Glow helpers ──────────────────────────────────────────────────── */
+    .glow-green { box-shadow: 0 0 30px -5px rgba(52, 211, 153, 0.35); }
+    .glow-amber { box-shadow: 0 0 30px -5px rgba(251, 191, 36, 0.35); }
+    .glow-red   { box-shadow: 0 0 30px -5px rgba(248, 113, 113, 0.35); }
+    .glow-blue  { box-shadow: 0 0 20px -5px rgba(96, 165, 250, 0.30); }
+
+    /* ── Form inputs ───────────────────────────────────────────────────── */
+    .field {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 10px;
+      padding: 11px 14px;
+      color: #e2e8f0;
+      font-size: 14px;
+      transition: border-color .2s, box-shadow .2s;
+      outline: none;
+    }
+    .field::placeholder { color: #475569; }
+    .field:focus {
+      border-color: rgba(96,165,250,0.6);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+    }
+
+    /* ── Primary button ────────────────────────────────────────────────── */
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6, #6366f1);
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-weight: 600;
+      font-size: 14px;
+      padding: 14px 20px;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s, opacity .15s;
+    }
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(59,130,246,0.40);
+    }
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Card base ─────────────────────────────────────────────────────── */
+    .card {
+      background: rgba(15, 17, 28, 0.85);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 16px;
+    }
+
+    /* ── Scrollbar ─────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+    /* ── Agent node ────────────────────────────────────────────────────── */
+    .agent-node {
+      border-radius: 10px;
+      padding: 10px 12px;
+      border: 1px solid;
+      transition: all .3s ease;
+      font-size: 12px;
+    }
+    .agent-pending  { border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); color: #475569; }
+    .agent-done     { border-color: rgba(52,211,153,0.35);  background: rgba(52,211,153,0.06);  color: #d1fae5; }
+    .agent-review   { border-color: rgba(251,191,36,0.50);  background: rgba(251,191,36,0.08);  color: #fef3c7; }
+
+    /* ── Connector arrow ───────────────────────────────────────────────── */
+    .arrow { color: #1e293b; font-size: 11px; text-align: center; margin: 5px 0; line-height: 1; }
+
+    /* ── Modal backdrop ────────────────────────────────────────────────── */
+    .modal-bg {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(8,9,14,0.82);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+  </style>
+</head>
+
+<body class="font-sans text-slate-200 antialiased" x-data="aria()" x-init="boot()">
+
+  <!-- ════════════════════════════════════════════════════════════
+       HEADER
+  ═══════════════════════════════════════════════════════════════ -->
+  <header class="fixed top-0 inset-x-0 z-40 h-14 flex items-center border-b"
+          style="background: rgba(8,9,14,0.85); backdrop-filter: blur(12px); border-color: rgba(255,255,255,0.06);">
+    <div class="w-full max-w-screen-xl mx-auto px-6 flex items-center justify-between">
+
+      <!-- Logo -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white"
+             style="background: linear-gradient(135deg,#3b82f6,#8b5cf6);">A</div>
+        <span class="font-semibold text-white tracking-wide text-[15px]">ARIA</span>
+        <span class="text-slate-600 text-sm font-light hidden sm:block">M&A Intelligence Platform</span>
+      </div>
+
+      <!-- Status pill -->
+      <div x-show="phase !== 'idle'" class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full"
+              :class="{
+                'bg-blue-400 animate-pulse': phase === 'analyzing',
+                'bg-amber-400 animate-pulse': phase === 'review',
+                'bg-emerald-400': phase === 'done',
+                'bg-red-400': phase === 'error' || phase === 'rejected',
+              }"></span>
+        <span class="text-sm text-slate-400" x-text="statusLabel"></span>
+      </div>
+
+      <!-- New analysis -->
+      <button x-show="phase !== 'idle'" @click="resetAll()"
+              class="text-sm text-slate-500 hover:text-slate-300 transition-colors">
+        ← New
+      </button>
+    </div>
+  </header>
+
+  <!-- ════════════════════════════════════════════════════════════
+       PHASE: IDLE — Hero + Input Form
+  ═══════════════════════════════════════════════════════════════ -->
+  <div x-show="phase === 'idle'" x-transition.opacity class="min-h-screen flex flex-col items-center justify-center px-4 pt-14">
+
+    <!-- Hero -->
+    <div class="text-center mb-10 max-w-2xl">
+      <div class="inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full mb-6"
+           style="background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.25); color:#93c5fd;">
+        <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+        12-Agent Autonomous Due Diligence · Powered by GPT-4o-mini
+      </div>
+      <h1 class="text-5xl font-extrabold text-white mb-4 leading-tight tracking-tight">
+        <span class="grad-text">Investment-Grade</span><br />M&A Analysis in Minutes
+      </h1>
+      <p class="text-slate-400 text-lg leading-relaxed">
+        ARIA runs a full buy-side due diligence — financials, valuation, adversarial bull/bear debate, risk assessment — and delivers an IC-ready investment memo.
+      </p>
+    </div>
+
+    <!-- Form card -->
+    <div class="w-full max-w-xl card p-8">
+      <form @submit.prevent="startAnalysis()">
+
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 uppercase tracking-widest mb-2">Target</label>
+            <input x-model="form.target" class="field" type="text" placeholder="Stripe" required />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 uppercase tracking-widest mb-2">Acquirer</label>
+            <input x-model="form.acquirer" class="field" type="text" placeholder="Visa" required />
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-xs font-medium text-slate-500 uppercase tracking-widest mb-2">
+            Deal Size <span class="normal-case text-slate-600 font-normal">— optional</span>
+          </label>
+          <div class="relative">
+            <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>
+            <input x-model="form.size" class="field pl-7" type="text" placeholder="50,000,000,000" />
+          </div>
+        </div>
+
+        <!-- Expandable brief -->
+        <div class="mb-6">
+          <button type="button" @click="showBrief = !showBrief"
+                  class="text-xs text-slate-600 hover:text-slate-400 transition-colors flex items-center gap-1 mb-2">
+            <span x-text="showBrief ? '▾' : '▸'"></span>
+            Add custom brief or focus areas
+          </button>
+          <textarea x-show="showBrief" x-model="form.brief"
+                    class="field resize-none"
+                    rows="3"
+                    placeholder="Specific context, focus areas, or constraints for the analysis..."></textarea>
+        </div>
+
+        <button type="submit" class="btn-primary w-full flex items-center justify-center gap-2" :disabled="loading">
+          <template x-if="!loading">
+            <span>Run Analysis →</span>
+          </template>
+          <template x-if="loading">
+            <span class="flex items-center gap-2">
+              <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              Starting…
+            </span>
+          </template>
+        </button>
+      </form>
+
+      <!-- Example chips -->
+      <div class="mt-6 pt-5 border-t" style="border-color: rgba(255,255,255,0.06);">
+        <p class="text-xs text-slate-600 mb-3">Try an example deal:</p>
+        <div class="flex flex-wrap gap-2">
+          <template x-for="ex in examples" :key="ex.target">
+            <button @click="fillExample(ex)"
+                    class="text-xs px-3 py-1.5 rounded-full transition-colors"
+                    style="border:1px solid rgba(255,255,255,0.08); color:#64748b;"
+                    onmouseover="this.style.color='#cbd5e1'; this.style.borderColor='rgba(255,255,255,0.18)'"
+                    onmouseout="this.style.color='#64748b'; this.style.borderColor='rgba(255,255,255,0.08)'">
+              <span x-text="`${ex.acquirer} ← ${ex.target}`"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature pills -->
+    <div class="flex flex-wrap gap-3 justify-center mt-8 max-w-xl">
+      <template x-for="f in features" :key="f">
+        <span class="text-xs text-slate-600 flex items-center gap-1.5">
+          <span class="text-slate-700">✦</span>
+          <span x-text="f"></span>
+        </span>
+      </template>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════
+       PHASE: ANALYZING — Dashboard
+  ═══════════════════════════════════════════════════════════════ -->
+  <div x-show="phase === 'analyzing' || phase === 'review'" x-transition.opacity
+       class="max-w-screen-xl mx-auto px-6 pt-20 pb-10">
+
+    <!-- Deal bar -->
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
+      <div>
+        <h2 class="text-xl font-semibold text-white">
+          <span x-text="form.acquirer"></span>
+          <span class="text-slate-600 mx-2">acquiring</span>
+          <span x-text="form.target"></span>
+        </h2>
+        <p class="text-slate-500 text-sm mt-0.5" x-show="parsedSize > 0">
+          Deal size: $<span x-text="parsedSize.toLocaleString()"></span>
+        </p>
+      </div>
+      <div class="text-right">
+        <p class="text-xs text-slate-600 mb-2">
+          <span x-text="doneCount"></span> / <span x-text="agents.length"></span> agents complete
+        </p>
+        <div class="w-36 h-1.5 rounded-full overflow-hidden" style="background:rgba(255,255,255,0.06);">
+          <div class="h-full rounded-full shimmer-bar transition-all duration-700"
+               :style="`width:${Math.round(doneCount/agents.length*100)}%`"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two-column layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+      <!-- LEFT: Pipeline visualization -->
+      <div class="lg:col-span-2">
+        <p class="text-xs font-medium text-slate-600 uppercase tracking-widest mb-4">Agent Pipeline</p>
+
+        <template x-for="(grp, gi) in groups" :key="gi">
+          <div>
+            <!-- Group label -->
+            <p class="text-[10px] text-slate-700 font-mono mb-1.5 uppercase tracking-wider" x-text="grp.label"></p>
+
+            <!-- Agent nodes -->
+            <div :class="grp.nodes.length > 1 ? 'grid grid-cols-2 gap-2' : ''">
+              <template x-for="ag in grp.nodes" :key="ag.id">
+                <div class="agent-node"
+                     :class="{
+                       'agent-pending': ag.status === 'pending',
+                       'agent-running agent-running': ag.status === 'running',
+                       'agent-done': ag.status === 'done',
+                       'agent-review': ag.status === 'review',
+                     }"
+                     style="border-radius: 10px; padding: 9px 12px; border: 1px solid; transition: all .3s;">
+                  <div class="flex items-center gap-2">
+                    <span x-text="ag.icon" class="text-sm leading-none"></span>
+                    <span class="flex-1 font-medium text-[12px]" x-text="ag.label"></span>
+                    <span class="text-[10px] font-mono"
+                          :class="{
+                            'text-slate-700': ag.status === 'pending',
+                            'text-blue-400': ag.status === 'running',
+                            'text-emerald-400': ag.status === 'done',
+                            'text-amber-400': ag.status === 'review',
+                          }"
+                          x-text="ag.status === 'done' ? '✓' : ag.status === 'running' ? '◉' : ag.status === 'review' ? '⏸' : '○'">
+                    </span>
+                  </div>
+                  <div x-show="ag.toolCalls > 0" class="mt-1.5">
+                    <span class="font-mono text-[10px] text-slate-600" x-text="`${ag.toolCalls} tool call${ag.toolCalls !== 1 ? 's' : ''}`"></span>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Connector -->
+            <div x-show="gi < groups.length - 1" class="arrow my-1.5">↓</div>
+          </div>
+        </template>
+      </div>
+
+      <!-- RIGHT: Live log stream -->
+      <div class="lg:col-span-3 flex flex-col">
+        <p class="text-xs font-medium text-slate-600 uppercase tracking-widest mb-4">Live Activity</p>
+        <div class="flex-1 card rounded-xl overflow-y-auto font-mono text-[12px] leading-relaxed"
+             style="height: 580px; padding: 16px;"
+             x-ref="logbox">
+          <template x-for="(lg, i) in logs" :key="i">
+            <div class="log-in flex gap-3 mb-1">
+              <span class="text-slate-700 shrink-0 w-[60px] text-right tabular-nums" x-text="lg.t"></span>
+              <span class="shrink-0"
+                    :class="{
+                      'text-slate-700': lg.k === 'sys',
+                      'text-blue-500': lg.k === 'tool',
+                      'text-amber-500': lg.k === 'warn',
+                      'text-red-500': lg.k === 'err',
+                      'text-emerald-400': lg.k === 'done',
+                      'text-slate-800': lg.k === 'hb',
+                    }">●</span>
+              <span class="break-words"
+                    :class="{
+                      'text-slate-300': lg.k === 'sys',
+                      'text-blue-400': lg.k === 'tool',
+                      'text-amber-400': lg.k === 'warn',
+                      'text-red-400': lg.k === 'err',
+                      'text-emerald-300': lg.k === 'done',
+                      'text-slate-800': lg.k === 'hb',
+                    }"
+                    x-text="lg.m"></span>
+            </div>
+          </template>
+          <div x-show="logs.length === 0" class="text-slate-700 text-center mt-16">
+            Initializing agents…
+          </div>
+          <!-- scroll anchor -->
+          <div x-ref="logbottom"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════
+       PHASE: REVIEW GATE — Modal overlay
+  ═══════════════════════════════════════════════════════════════ -->
+  <div x-show="phase === 'review'" x-transition.opacity class="modal-bg">
+    <div class="w-full max-w-lg card p-8 glow-amber" style="border-color: rgba(251,191,36,0.25);">
+
+      <!-- Header -->
+      <div class="flex items-start gap-4 mb-6">
+        <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0"
+             style="background:rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.35);">⏸</div>
+        <div>
+          <h2 class="text-white font-semibold text-lg">Human Review Gate</h2>
+          <p class="text-slate-400 text-sm mt-0.5">Preliminary analysis complete. Approve to generate the full IC memo.</p>
+        </div>
+      </div>
+
+      <!-- Score cards -->
+      <div class="grid grid-cols-2 gap-3 mb-4" x-show="reviewData">
+
+        <div class="rounded-xl p-4" style="background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.2);">
+          <p class="text-[10px] text-emerald-500/70 uppercase tracking-widest mb-1.5">Bull Conviction</p>
+          <p class="text-3xl font-bold text-emerald-400" x-text="`${reviewData?.bull_conviction ?? '—'}/10`"></p>
+          <p class="text-[11px] text-slate-400 mt-2 line-clamp-2" x-text="reviewData?.bull_thesis_title || ''"></p>
+        </div>
+
+        <div class="rounded-xl p-4" style="background:rgba(248,113,113,0.06); border:1px solid rgba(248,113,113,0.2);">
+          <p class="text-[10px] text-red-400/70 uppercase tracking-widest mb-1.5">Bear Conviction</p>
+          <p class="text-3xl font-bold text-red-400" x-text="`${reviewData?.bear_conviction ?? '—'}/10`"></p>
+          <p class="text-[11px] text-slate-400 mt-2 line-clamp-2" x-text="reviewData?.bear_thesis_title || ''"></p>
+        </div>
+
+        <div class="rounded-xl p-4" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);">
+          <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5">Risk Score</p>
+          <p class="text-2xl font-bold"
+             :class="(reviewData?.risk_score||0)>=7?'text-red-400':(reviewData?.risk_score||0)>=4?'text-amber-400':'text-emerald-400'"
+             x-text="`${reviewData?.risk_score ?? '—'}/10`"></p>
+        </div>
+
+        <div class="rounded-xl p-4" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);">
+          <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5">Debate Direction</p>
+          <p class="text-sm font-semibold capitalize mt-1"
+             :class="{
+               'text-emerald-400': reviewData?.debate_direction === 'bull_winning',
+               'text-red-400': reviewData?.debate_direction === 'bear_winning',
+               'text-slate-300': reviewData?.debate_direction === 'too_close_to_call',
+             }"
+             x-text="(reviewData?.debate_direction || '—').replace(/_/g,' ')"></p>
+        </div>
+
+        <div class="col-span-2 rounded-xl p-4" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);">
+          <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-1.5">Risk Manager Decision</p>
+          <p class="text-base font-semibold"
+             :class="{
+               'text-emerald-400': reviewData?.risk_recommendation === 'PROCEED',
+               'text-amber-400': reviewData?.risk_recommendation === 'PROCEED_WITH_CONDITIONS',
+               'text-red-400': reviewData?.risk_recommendation === 'HARD_STOP',
+               'text-slate-300': !reviewData?.risk_recommendation,
+             }"
+             x-text="reviewData?.risk_recommendation || '—'"></p>
+        </div>
+
+        <!-- Hard stops -->
+        <template x-if="(reviewData?.hard_stops || []).length > 0">
+          <div class="col-span-2 rounded-xl p-4" style="background:rgba(248,113,113,0.05); border:1px solid rgba(248,113,113,0.25);">
+            <p class="text-[10px] text-red-400 uppercase tracking-widest mb-2 font-medium">⚠ Hard Stops Flagged</p>
+            <template x-for="(s, i) in (reviewData?.hard_stops || [])" :key="i">
+              <p class="text-[12px] text-red-300 mb-1" x-text="`• ${s}`"></p>
+            </template>
+          </div>
+        </template>
+      </div>
+
+      <!-- Notes -->
+      <div class="mb-5">
+        <label class="block text-xs text-slate-500 mb-2">Notes for the report agent (optional)</label>
+        <textarea x-model="reviewNotes" rows="2" placeholder="Focus on X, ignore Y, flag condition Z..."
+                  class="field resize-none text-sm"></textarea>
+      </div>
+
+      <!-- Buttons -->
+      <div class="flex gap-3">
+        <button @click="submitReview(true)"
+                class="flex-1 py-3.5 rounded-xl font-semibold text-sm text-white transition-all"
+                style="background: #10b981;"
+                onmouseover="this.style.background='#059669'; this.style.boxShadow='0 6px 20px rgba(16,185,129,0.3)'"
+                onmouseout="this.style.background='#10b981'; this.style.boxShadow='none'">
+          ✓ Approve — Generate IC Memo
+        </button>
+        <button @click="submitReview(false)"
+                class="flex-1 py-3.5 rounded-xl font-semibold text-sm transition-all"
+                style="border:1px solid rgba(248,113,113,0.3); color:#f87171;"
+                onmouseover="this.style.background='rgba(248,113,113,0.08)'"
+                onmouseout="this.style.background='transparent'">
+          ✗ Reject
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════
+       PHASE: DONE — Final Memo
+  ═══════════════════════════════════════════════════════════════ -->
+  <div x-show="phase === 'done'" x-transition.opacity class="max-w-4xl mx-auto px-6 pt-20 pb-16">
+
+    <!-- Recommendation banner -->
+    <div class="rounded-2xl p-8 mb-8"
+         :class="{
+           'glow-green': decision === 'PROCEED',
+           'glow-amber': decision === 'PROCEED_WITH_CONDITIONS',
+           'glow-red': decision === 'DO_NOT_PROCEED',
+         }"
+         :style="`border:1px solid ${decisionBorderColor}; background:${decisionBgColor};`">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p class="text-[11px] uppercase tracking-widest mb-2" :style="`color:${decisionColor}`">
+            IC Recommendation
+          </p>
+          <h2 class="text-3xl font-extrabold tracking-tight" :style="`color:${decisionColor}`"
+              x-text="(decision || 'Analysis Complete').replace(/_/g,' ')"></h2>
+          <p class="text-slate-300 text-sm leading-relaxed mt-3 max-w-xl"
+             x-text="memo?.executive_summary?.key_thesis || memo?.executive_summary?.deal_description || ''"></p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-xs text-slate-500" x-text="memo?.memo_metadata?.date || ''"></p>
+          <p class="text-[10px] text-slate-700 mt-1">ARIA Autonomous Research System</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sections -->
+    <div class="space-y-3">
+
+      <!-- Executive Summary -->
+      <template x-if="memo?.executive_summary">
+        <div class="card overflow-hidden">
+          <button @click="toggle('exec')" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-white/[0.02] transition-colors">
+            <div class="flex items-center gap-3">
+              <span class="text-base">📋</span>
+              <span class="font-semibold text-white text-sm">Executive Summary</span>
+            </div>
+            <span class="text-slate-600 text-xs" x-text="open.has('exec') ? '▴' : '▾'"></span>
+          </button>
+          <div x-show="open.has('exec')" class="px-6 pb-6 border-t" style="border-color:rgba(255,255,255,0.05);">
+            <div class="grid grid-cols-2 gap-4 pt-5 mb-5">
+              <div>
+                <p class="text-[10px] text-slate-600 uppercase tracking-widest mb-1.5">Primary Upside</p>
+                <p class="text-sm text-slate-200" x-text="memo.executive_summary.primary_upside || '—'"></p>
+              </div>
+              <div>
+                <p class="text-[10px] text-slate-600 uppercase tracking-widest mb-1.5">Primary Risk</p>
+                <p class="text-sm text-slate-200" x-text="memo.executive_summary.primary_risk || '—'"></p>
+              </div>
+            </div>
+            <template x-if="memo.executive_summary.recommended_price_range?.low_usd">
+              <div class="mb-4 rounded-xl p-4" style="background:rgba(59,130,246,0.06); border:1px solid rgba(59,130,246,0.18);">
+                <p class="text-[10px] text-blue-400/70 uppercase tracking-widest mb-1.5">Recommended Price Range</p>
+                <p class="text-lg font-bold font-mono text-blue-400"
+                   x-text="`$${((memo.executive_summary.recommended_price_range?.low_usd||0)/1e9).toFixed(1)}B — $${((memo.executive_summary.recommended_price_range?.high_usd||0)/1e9).toFixed(1)}B`"></p>
+              </div>
+            </template>
+            <p class="text-sm text-slate-300 leading-relaxed" x-text="memo.executive_summary.deal_description || ''"></p>
+            <p x-show="memo.executive_summary.urgency" class="text-sm text-amber-400 mt-3 flex items-start gap-2">
+              <span class="shrink-0">⚡</span>
+              <span x-text="memo.executive_summary.urgency"></span>
+            </p>
+          </div>
+        </div>
+      </template>
+
+      <!-- Financial Analysis -->
+      <template x-if="memo?.financial_analysis">
+        <div class="card overflow-hidden">
+          <button @click="toggle('fin')" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-white/[0.02] transition-colors">
+            <div class="flex items-center gap-3">
+              <span class="text-base">💹</span>
+              <span class="font-semibold text-white text-sm">Financial Analysis</span>
+            </div>
+            <span class="text-slate-600 text-xs" x-text="open.has('fin') ? '▴' : '▾'"></span>
+          </button>
+          <div x-show="open.has('fin')" class="px-6 pb-6 border-t" style="border-color:rgba(255,255,255,0.05);">
+            <template x-if="memo.financial_analysis.key_metrics_table">
+              <div class="pt-5 mb-5 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <template x-for="[k, v] in Object.entries(memo.financial_analysis.key_metrics_table || {})" :key="k">
+                  <div class="rounded-lg px-3 py-2.5" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);">
+                    <p class="text-[10px] text-slate-600 mb-0.5" x-text="k"></p>
+                    <p class="text-sm text-slate-200 font-mono" x-text="v"></p>
+                  </div>
+                </template>
+              </div>
+            </template>
+            <div class="space-y-3 text-sm text-slate-300 leading-relaxed" x-show="!memo.financial_analysis.key_metrics_table" style="padding-top:20px;"></div>
+            <div class="space-y-3 text-sm text-slate-300 leading-relaxed">
+              <p x-show="memo.financial_analysis.revenue_profile">
+                <span class="text-slate-500 font-medium">Revenue — </span><span x-text="memo.financial_analysis.revenue_profile"></span>
+              </p>
+              <p x-show="memo.financial_analysis.profitability">
+                <span class="text-slate-500 font-medium">Profitability — </span><span x-text="memo.financial_analysis.profitability"></span>
+              </p>
+              <p x-show="memo.financial_analysis.balance_sheet">
+                <span class="text-slate-500 font-medium">Balance Sheet — </span><span x-text="memo.financial_analysis.balance_sheet"></span>
+              </p>
+              <p class="text-slate-200 pt-1" x-text="memo.financial_analysis.financial_conclusion || ''"></p>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Valuation -->
+      <template x-if="memo?.valuation">
+        <div class="card overflow-hidden">
+          <button @click="toggle('val')" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-white/[0.02] transition-colors">
+            <div class="flex items-center gap-3">
+              <span class="text-base">⚖️</span>
+              <span class="font-semibold text-white text-sm">Valuation</span>
+            </div>
+            <span class="text-slate-600 text-xs" x-text="open.has('val') ? '▴' : '▾'"></span>
+          </button>
+          <div x-show="open.has('val')" class="px-6 pb-6 border-t" style="border-color:rgba(255,255,255,0.05);">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5 mb-5">
+              <template x-for="[label, range] in valRanges" :key="label">
+                <div class="rounded-xl p-3.5" style="background:rgba(59,130,246,0.05); border:1px solid rgba(59,130,246,0.15);">
+                  <p class="text-[10px] text-blue-400/70 uppercase tracking-widest mb-1" x-text="label"></p>
+                  <p class="text-xs font-mono font-semibold text-blue-300" x-text="range"></p>
+                </div>
+              </template>
+            </div>
+            <p class="text-sm text-slate-300 leading-relaxed" x-text="memo.valuation.valuation_conclusion || ''"></p>
+          </div>
+        </div>
+      </template>
+
+      <!-- Strategic Analysis -->
+      <template x-if="memo?.strategic_analysis">
+        <div class="card overflow-hidden">
+          <button @click="toggle('strat')" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-white/[0.02] transition-colors">
+            <div class="flex items-center gap-3">
+              <span class="text-base">🎯</span>
+              <span class="font-semibold text-white text-sm">Strategic Analysis</span>
+            </div>
+            <span class="text-slate-600 text-xs" x-text="open.has('strat') ? '▴' : '▾'"></span>
+          </button>
+          <div x-show="open.has('strat')" class="px-6 pb-6 pt-5 border-t space-y-3 text-sm text-slate-300 leading-relaxed" style="border-color:rgba(255,255,255,0.05);">
+            <p x-show="memo.strategic_analysis.market_opportunity">
+              <span class="text-slate-500 font-medium">Market — </span><span x-text="memo.strategic_analysis.market_opportunity"></span>
+            </p>
+            <p x-show="memo.strategic_analysis.competitive_position">
+              <span class="text-slate-500 font-medium">Competition — </span><span x-text="memo.strategic_analysis.competitive_position"></span>
+            </p>
+            <p x-show="memo.strategic_analysis.technology_assets">
+              <span class="text-slate-500 font-medium">Technology — </span><span x-text="memo.strategic_analysis.technology_assets"></span>
+            </p>
+            <p x-show="memo.strategic_analysis.management_quality">
+              <span class="text-slate-500 font-medium">Management — </span><span x-text="memo.strategic_analysis.management_quality"></span>
+            </p>
+            <p x-show="memo.strategic_analysis.strategic_fit_with_acquirer">
+              <span class="text-slate-500 font-medium">Strategic Fit — </span><span x-text="memo.strategic_analysis.strategic_fit_with_acquirer"></span>
+            </p>
+          </div>
+        </div>
+      </template>
+
+      <!-- Bull / Bear Debate -->
+      <template x-if="memo?.bull_bear_debate">
+        <div class="card overflow-hidden">
+          <button @click="toggle('debate')" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-white/[0.02] transition-colors">
+            <div class="flex items-center gap-3">
+              <span class="text-base">⚔️</span>
+              <span class="font-semibold text-white text-sm">Bull / Bear Debate</span>
+            </div>
+            <span class="text-slate-600 text-xs" x-text="open.has('debate') ? '▴' : '▾'"></span>
+          </button>
+          <div x-show="open.has('debate')" class="px-6 pb-6 border-t" style="border-color:rgba(255,255,255,0.05);">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-5 mb-4">
+              <div class="rounded-xl p-5" style="background:rgba(52,211,153,0.05); border:1px solid rgba(52,211,153,0.2);">
+                <p class="text-[10px] text-emerald-400 uppercase tracking-widest font-medium mb-3">Bull Case</p>
+                <p class="text-sm text-slate-300 leading-relaxed" x-text="memo.bull_bear_debate.bull_case"></p>
+              </div>
+              <div class="rounded-xl p-5" style="background:rgba(248,113,113,0.05); border:1px solid rgba(248,113,113,0.2);">
+                <p class="text-[10px] text-red-400 uppercase tracking-widest font-medium mb-3">Bear Case</p>
+                <p class="text-sm text-slate-300 leading-relaxed" x-text="memo.bull_bear_debate.bear_case"></p>
+              </div>
+            </div>
+            <div class="rounded-xl p-4" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);">
+              <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Debate Resolution</p>
+              <p class="text-sm text-slate-200" x-text="memo.bull_bear_debate.debate_resolution"></p>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Risk Matrix -->
+      <template x-if="memo?.risk_matrix">
+        <div class="card overflow-hidden">
+          <button @click="toggle('risk')" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-white/[0.02] transition-colors">
+            <div class="flex items-center gap-3">
+              <span class="text-base">⚠️</span>
+              <span class="font-semibold text-white text-sm">Risk Matrix</span>
+            </div>
+            <span class="text-slate-600 text-xs" x-text="open.has('risk') ? '▴' : '▾'"></span>
+          </button>
+          <div x-show="open.has('risk')" class="px-6 pb-6 border-t" style="border-color:rgba(255,255,255,0.05);">
+            <div class="space-y-2.5 pt-5 mb-5">
+              <template x-for="(r, i) in (memo.risk_matrix.top_risks || [])" :key="i">
+                <div class="rounded-xl p-4 flex items-start gap-4" style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06);">
+                  <div class="flex gap-1.5 shrink-0 mt-0.5">
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                          :class="r.probability==='H'?'bg-red-500/20 text-red-400':r.probability==='M'?'bg-amber-500/20 text-amber-400':'bg-slate-700 text-slate-400'"
+                          x-text="`P:${r.probability}`"></span>
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                          :class="r.impact==='H'?'bg-red-500/20 text-red-400':r.impact==='M'?'bg-amber-500/20 text-amber-400':'bg-slate-700 text-slate-400'"
+                          x-text="`I:${r.impact}`"></span>
+                  </div>
+                  <div>
+                    <p class="text-sm text-slate-100 font-medium" x-text="r.risk"></p>
+                    <p class="text-[12px] text-slate-500 mt-1" x-text="r.mitigation"></p>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <p class="text-sm text-slate-300 leading-relaxed" x-text="memo.risk_matrix.risk_conclusion || ''"></p>
+          </div>
+        </div>
+      </template>
+
+      <!-- Final Recommendation -->
+      <template x-if="memo?.recommendation">
+        <div class="rounded-2xl p-7"
+             :style="`border:1px solid ${decisionBorderColor}; background:${decisionBgColor};`">
+          <h3 class="font-semibold text-white text-sm mb-4 flex items-center gap-2">
+            <span>📌</span> Final Recommendation & Next Steps
+          </h3>
+          <p class="text-sm text-slate-300 leading-relaxed mb-5" x-text="memo.recommendation.price_recommendation || ''"></p>
+
+          <template x-if="(memo.recommendation.key_conditions || []).length > 0">
+            <div class="mb-5">
+              <p class="text-[10px] text-amber-400/70 uppercase tracking-widest mb-2.5">Conditions</p>
+              <template x-for="(c, i) in (memo.recommendation.key_conditions || [])" :key="i">
+                <p class="text-sm text-amber-300 mb-1.5 flex items-start gap-2">
+                  <span class="shrink-0 mt-0.5">▸</span><span x-text="c"></span>
+                </p>
+              </template>
+            </div>
+          </template>
+
+          <template x-if="(memo.recommendation.next_steps || []).length > 0">
+            <div>
+              <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-2.5">Next Steps</p>
+              <template x-for="(s, i) in (memo.recommendation.next_steps || [])" :key="i">
+                <p class="text-sm text-slate-200 mb-1.5 flex items-start gap-2">
+                  <span class="shrink-0 text-slate-600 font-mono text-[11px] mt-0.5" x-text="`${i+1}.`"></span>
+                  <span x-text="s"></span>
+                </p>
+              </template>
+            </div>
+          </template>
+
+          <p x-show="memo.recommendation.dissenting_views"
+             class="text-xs text-slate-500 mt-5 pt-4 border-t" style="border-color:rgba(255,255,255,0.08);"
+             x-text="`Note: ${memo.recommendation.dissenting_views}`"></p>
+        </div>
+      </template>
+
+      <!-- Disclaimer -->
+      <div class="rounded-xl p-4 text-center text-[11px] text-slate-700 mt-4"
+           style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05);">
+        This analysis was generated by an autonomous AI system. All figures should be independently verified before any investment decision. This memo does not constitute investment advice.
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════
+       PHASE: ERROR / REJECTED
+  ═══════════════════════════════════════════════════════════════ -->
+  <div x-show="phase === 'error' || phase === 'rejected'" x-transition.opacity
+       class="min-h-screen flex items-center justify-center px-6 pt-14">
+    <div class="text-center max-w-md">
+      <div class="w-16 h-16 rounded-2xl mx-auto mb-6 flex items-center justify-center text-2xl"
+           style="background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.3);">
+        <span x-text="phase === 'rejected' ? '✗' : '!'"></span>
+      </div>
+      <h2 class="text-xl font-semibold text-white mb-2"
+          x-text="phase === 'rejected' ? 'Analysis Rejected' : 'Analysis Failed'"></h2>
+      <p class="text-slate-400 text-sm mb-8 leading-relaxed" x-text="errMsg || 'An unexpected error occurred.'"></p>
+      <button @click="resetAll()" class="btn-primary px-8">
+        Start New Analysis
+      </button>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════════════════
+       ALPINE.JS APP
+  ═══════════════════════════════════════════════════════════════ -->
+  <script>
+  function aria() {
+    return {
+      // ── State machine ──────────────────────────────────────────────────────
+      phase: 'idle',    // idle | analyzing | review | done | error | rejected
+      loading: false,
+      showBrief: false,
+
+      // ── Form ───────────────────────────────────────────────────────────────
+      form: { target: '', acquirer: '', size: '', brief: '' },
+
+      // ── Thread ─────────────────────────────────────────────────────────────
+      threadId: null,
+      es: null,          // EventSource
+
+      // ── Log stream ─────────────────────────────────────────────────────────
+      logs: [],
+
+      // ── Agents ─────────────────────────────────────────────────────────────
+      agents: [
+        { id:'decompose',           label:'Deal Director',  icon:'⬡',  g:0, status:'pending', toolCalls:0 },
+        { id:'gather_financials',   label:'Financials',     icon:'💹', g:1, status:'pending', toolCalls:0 },
+        { id:'run_valuation',       label:'Valuation',      icon:'⚖',  g:1, status:'pending', toolCalls:0 },
+        { id:'gather_market',       label:'Market',         icon:'📈', g:1, status:'pending', toolCalls:0 },
+        { id:'analyze_competition', label:'Competition',    icon:'🎯', g:1, status:'pending', toolCalls:0 },
+        { id:'assess_technology',   label:'Technology',     icon:'⚙',  g:1, status:'pending', toolCalls:0 },
+        { id:'assess_management',   label:'Management',     icon:'👔', g:1, status:'pending', toolCalls:0 },
+        { id:'build_bull_thesis',   label:'Bull Analyst',   icon:'↑',  g:2, status:'pending', toolCalls:0 },
+        { id:'build_bear_thesis',   label:'Bear Analyst',   icon:'↓',  g:2, status:'pending', toolCalls:0 },
+        { id:'debate_round_1',      label:'Debate Round 1', icon:'⚔', g:3, status:'pending', toolCalls:0 },
+        { id:'debate_round_2',      label:'Debate Round 2', icon:'⚔', g:3, status:'pending', toolCalls:0 },
+        { id:'assess_risk',         label:'Risk Manager',   icon:'⚠', g:4, status:'pending', toolCalls:0 },
+        { id:'human_review',        label:'Human Gate',     icon:'⏸', g:5, status:'pending', toolCalls:0 },
+        { id:'critique_analysis',   label:'Critique',       icon:'🔍', g:6, status:'pending', toolCalls:0 },
+        { id:'generate_report',     label:'Report',         icon:'📋', g:7, status:'pending', toolCalls:0 },
+      ],
+
+      // ── Review ─────────────────────────────────────────────────────────────
+      reviewData: null,
+      reviewNotes: '',
+
+      // ── Final memo ─────────────────────────────────────────────────────────
+      memo: null,
+
+      // ── Error ──────────────────────────────────────────────────────────────
+      errMsg: '',
+
+      // ── UI state ───────────────────────────────────────────────────────────
+      open: new Set(['exec', 'fin']),
+
+      // ── Constants ──────────────────────────────────────────────────────────
+      examples: [
+        { target:'Stripe',  acquirer:'Visa',       size:'50000000000' },
+        { target:'Figma',   acquirer:'Adobe',      size:'20000000000' },
+        { target:'GitHub',  acquirer:'Microsoft',  size:'7500000000'  },
+      ],
+      features: [
+        'SEC EDGAR filings', 'Live web research', 'Adversarial debate',
+        'Human review gate', 'Investment-grade memo',
+      ],
+
+      // ── Computed ───────────────────────────────────────────────────────────
+
+      get statusLabel() {
+        return { analyzing:'Analysis Running', review:'Awaiting Review',
+                 done:'Complete', error:'Error', rejected:'Rejected' }[this.phase] || ''
+      },
+
+      get parsedSize() {
+        return this.form.size ? parseFloat(this.form.size.replace(/,/g,'')) || 0 : 0
+      },
+
+      get doneCount() {
+        return this.agents.filter(a => a.status === 'done').length
+      },
+
+      get groups() {
+        const labels = [
+          'Stage 1 · Director',
+          'Stage 2 · Data Gathering  (parallel)',
+          'Stage 3 · Thesis Construction  (parallel)',
+          'Stage 4 · Adversarial Debate',
+          'Stage 5 · Risk Assessment',
+          'Stage 6 · Human Review Gate',
+          'Stage 7 · Critique & Verification',
+          'Stage 8 · Report Generation',
+        ]
+        return [0,1,2,3,4,5,6,7].map(g => ({
+          label: labels[g],
+          nodes: this.agents.filter(a => a.g === g),
+        }))
+      },
+
+      get decision() {
+        return this.memo?.recommendation?.decision
+            || this.memo?.executive_summary?.recommendation
+            || null
+      },
+
+      get decisionColor() {
+        return { PROCEED:'#34d399', PROCEED_WITH_CONDITIONS:'#fbbf24', DO_NOT_PROCEED:'#f87171' }[this.decision] || '#94a3b8'
+      },
+
+      get decisionBorderColor() {
+        return { PROCEED:'rgba(52,211,153,0.3)', PROCEED_WITH_CONDITIONS:'rgba(251,191,36,0.3)', DO_NOT_PROCEED:'rgba(248,113,113,0.3)' }[this.decision] || 'rgba(255,255,255,0.07)'
+      },
+
+      get decisionBgColor() {
+        return { PROCEED:'rgba(52,211,153,0.05)', PROCEED_WITH_CONDITIONS:'rgba(251,191,36,0.05)', DO_NOT_PROCEED:'rgba(248,113,113,0.05)' }[this.decision] || 'rgba(255,255,255,0.02)'
+      },
+
+      get valRanges() {
+        const v = this.memo?.valuation || {}
+        const fmt = r => (r?.low && r?.high)
+          ? `$${(r.low/1e9).toFixed(1)}B — $${(r.high/1e9).toFixed(1)}B`
+          : '—'
+        return [
+          ['Comps',        fmt(v.comps_range)],
+          ['Precedents',   fmt(v.precedent_transactions_range)],
+          ['Fundamental',  fmt(v.fundamental_range)],
+          ['Blended',      fmt(v.blended_fair_value_range)],
+        ]
+      },
+
+      // ── Methods ────────────────────────────────────────────────────────────
+
+      boot() {
+        // Restore from URL if present
+        const tid = new URLSearchParams(location.search).get('t')
+        if (tid) {
+          this.threadId = tid
+          this.phase = 'analyzing'
+          this.connectSSE()
+        }
+      },
+
+      fillExample(ex) {
+        this.form.target   = ex.target
+        this.form.acquirer = ex.acquirer
+        this.form.size     = ex.size
+      },
+
+      async startAnalysis() {
+        this.loading = true
+        this.resetAgents()
+        this.logs = []
+
+        try {
+          const r = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              target_company:   this.form.target,
+              acquirer_company: this.form.acquirer,
+              deal_size_usd:    this.parsedSize || null,
+              deal_brief:       this.form.brief || null,
+            }),
+          })
+          const d = await r.json()
+          this.threadId = d.thread_id
+          history.replaceState(null, '', `?t=${this.threadId}`)
+          this.phase = 'analyzing'
+          this.connectSSE()
+        } catch (e) {
+          this.errMsg = e.message
+          this.phase = 'error'
+        } finally {
+          this.loading = false
+        }
+      },
+
+      connectSSE() {
+        if (this.es) this.es.close()
+        this.es = new EventSource(`/api/stream/${this.threadId}`)
+        this.es.onmessage = e => this.onEvent(JSON.parse(e.data))
+        this.es.onerror   = () => this.es.close()
+      },
+
+      onEvent(ev) {
+        const t = new Date().toLocaleTimeString('en-US', { hour12:false })
+
+        if (ev.type === 'heartbeat') return
+
+        if (ev.type === 'node_complete') {
+          const ag = this.agents.find(a => a.id === ev.node)
+          if (ag) {
+            ag.status    = 'done'
+            ag.toolCalls = (ev.logs || []).filter(l => l.status === 'tool_call').length
+          }
+          this.activateNext(ev.node)
+          this.log('sys',  `✓ ${ev.node.replace(/_/g,' ')} complete`, t)
+          for (const l of (ev.logs || [])) {
+            if (l.status === 'tool_call') this.log('tool', `  ${l.message}`, t)
+            if (l.status === 'warning')   this.log('warn', `  ⚠ ${l.message}`, t)
+          }
+          for (const e of (ev.errors || [])) this.log('err', `  ✗ ${e}`, t)
+        }
+
+        else if (ev.type === 'review_required') {
+          const ag = this.agents.find(a => a.id === 'human_review')
+          if (ag) ag.status = 'review'
+          this.reviewData = ev.data
+          this.log('warn', '⏸ Paused — human review gate', t)
+          setTimeout(() => { this.phase = 'review' }, 400)
+        }
+
+        else if (ev.type === 'done') {
+          if (ev.final_memo) {
+            const ag = this.agents.find(a => a.id === 'generate_report')
+            if (ag) ag.status = 'done'
+            this.log('done', '✓ IC memo generated — analysis complete', t)
+            this.memo  = ev.final_memo
+            this.phase = 'done'
+            this.open  = new Set(['exec', 'fin'])
+          }
+          if (this.es) this.es.close()
+        }
+
+        else if (ev.type === 'rejected') {
+          this.errMsg = ev.message
+          this.phase  = 'rejected'
+          if (this.es) this.es.close()
+        }
+
+        else if (ev.type === 'error') {
+          this.errMsg = ev.message
+          this.log('err', `Error: ${ev.message}`, t)
+          this.phase  = 'error'
+          if (this.es) this.es.close()
+        }
+      },
+
+      activateNext(nodeId) {
+        const ag = this.agents.find(a => a.id === nodeId)
+        if (!ag) return
+
+        // Mark peers in same group as running (parallel groups)
+        this.agents.filter(a => a.g === ag.g && a.status === 'pending')
+                   .forEach(a => a.status = 'running')
+
+        // Check if all in this group done → activate next group
+        const groupDone = this.agents.filter(a => a.g === ag.g).every(a => a.status === 'done')
+        if (groupDone) {
+          this.agents.filter(a => a.g === ag.g + 1 && a.status === 'pending')
+                     .forEach(a => a.status = 'running')
+        }
+      },
+
+      log(k, m, t) {
+        this.logs.push({ k, m, t })
+        if (this.logs.length > 300) this.logs.shift()
+        this.$nextTick(() => {
+          const el = this.$refs.logbottom
+          if (el) el.scrollIntoView({ behavior: 'smooth' })
+        })
+      },
+
+      async submitReview(approved) {
+        try {
+          await fetch(`/api/review/${this.threadId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ approved, notes: this.reviewNotes }),
+          })
+          const ag = this.agents.find(a => a.id === 'human_review')
+          if (ag) ag.status = 'done'
+          const t = new Date().toLocaleTimeString('en-US', { hour12:false })
+          this.log(approved ? 'done' : 'err',
+                   approved ? '✓ Approved — generating IC memo…' : '✗ Rejected',
+                   t)
+          this.phase = approved ? 'analyzing' : 'rejected'
+          if (!approved) this.errMsg = 'Rejected at human review gate.'
+        } catch (e) {
+          this.errMsg = e.message
+          this.phase  = 'error'
+        }
+      },
+
+      toggle(id) {
+        const s = new Set(this.open)
+        s.has(id) ? s.delete(id) : s.add(id)
+        this.open = s
+      },
+
+      resetAgents() {
+        this.agents.forEach(a => { a.status = 'pending'; a.toolCalls = 0 })
+      },
+
+      resetAll() {
+        if (this.es) this.es.close()
+        Object.assign(this, {
+          phase:'idle', loading:false, threadId:null, es:null,
+          logs:[], reviewData:null, reviewNotes:'', memo:null, errMsg:'',
+          open: new Set(['exec','fin']),
+        })
+        this.resetAgents()
+        history.replaceState(null, '', location.pathname)
+      },
+    }
+  }
+  </script>
+</body>
+</html>
