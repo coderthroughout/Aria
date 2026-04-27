@@ -171,11 +171,19 @@ async def run_agent(
     # Open an Omium agent span for the full duration of this agent's work.
     # All LLM calls, tool calls, and token counts nest inside this span.
     omium_span = None
+    _omium_cm = None
+    _omium_tracer = None
     try:
         if settings.omium_api_key:
             from omium.integrations.tracer import OmiumTracer
-            _tracer = OmiumTracer(project="ARIA")
-            omium_span = _tracer.span(agent_name, span_type="agent").__enter__()
+            from omium.integrations.core import get_current_config as _get_omium_cfg
+            _cfg = _get_omium_cfg()
+            _omium_tracer = OmiumTracer(
+                execution_id=(_cfg.execution_id if _cfg else None),
+                project="ARIA",
+            )
+            _omium_cm = _omium_tracer.span(agent_name, span_type="agent")
+            omium_span = _omium_cm.__enter__()
     except Exception:
         pass
 
@@ -248,14 +256,19 @@ async def run_agent(
     except Exception as exc:
         if omium_span is not None:
             try:
-                omium_span.set_error(str(exc), type(exc).__name__)
+                omium_span.set_error(exc)
             except Exception:
                 pass
         raise
 
     finally:
-        if omium_span is not None:
+        if _omium_cm is not None:
             try:
-                omium_span.__exit__(None, None, None)
+                _omium_cm.__exit__(None, None, None)
+            except Exception:
+                pass
+        if _omium_tracer is not None:
+            try:
+                await _omium_tracer.aflush()
             except Exception:
                 pass
