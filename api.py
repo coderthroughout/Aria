@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     if settings.omium_api_key:
         try:
             import omium
-            omium.init(api_key=settings.omium_api_key, project="ARIA")
+            omium.init(api_key=settings.omium_api_key, project="aria")
             omium.instrument_langgraph()
         except Exception:
             pass  # Omium is observability — never let it break the app

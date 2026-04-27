@@ -180,7 +180,7 @@ async def run_agent(
             _cfg = _get_omium_cfg()
             _omium_tracer = OmiumTracer(
                 execution_id=(_cfg.execution_id if _cfg else None),
-                project="ARIA",
+                project="aria",
             )
             _omium_cm = _omium_tracer.span(agent_name, span_type="agent")
             omium_span = _omium_cm.__enter__()
