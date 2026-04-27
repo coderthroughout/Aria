@@ -160,6 +160,26 @@ async def _run_pipeline(thread_id: str, req: AnalyzeRequest, session: dict):
         except Exception:
             pass
 
+    # ── Explicit Omium pipeline span ───────────────────────────────────────────
+    # _patched_astream flushes before the root span is committed to _spans (SDK
+    # ordering bug), so we send our own reliable top-level span here instead.
+    _o_tracer = None
+    _o_cm = None
+    _o_span = None
+    if settings.omium_api_key:
+        try:
+            from omium.integrations.tracer import OmiumTracer
+            _o_tracer = OmiumTracer(execution_id=thread_id, project="aria")
+            _o_cm = _o_tracer.span(
+                "aria.pipeline",
+                span_type="agent",
+                target=req.target_company,
+                acquirer=req.acquirer_company,
+            )
+            _o_span = _o_cm.__enter__()
+        except Exception:
+            pass
+
     try:
         from dotenv import load_dotenv
         load_dotenv()
@@ -263,6 +283,11 @@ async def _run_pipeline(thread_id: str, req: AnalyzeRequest, session: dict):
         await push({"type": "done", "final_memo": final_memo})
 
     except Exception as exc:
+        if _o_span is not None:
+            try:
+                _o_span.set_error(exc)
+            except Exception:
+                pass
         import traceback
         session["status"] = "error"
         await push({
@@ -270,6 +295,18 @@ async def _run_pipeline(thread_id: str, req: AnalyzeRequest, session: dict):
             "message": str(exc),
             "detail": traceback.format_exc(),
         })
+
+    finally:
+        if _o_cm is not None:
+            try:
+                _o_cm.__exit__(None, None, None)  # commits span to _spans
+            except Exception:
+                pass
+        if _o_tracer is not None:
+            try:
+                await _o_tracer.aflush()  # sends immediately, after span is committed
+            except Exception:
+                pass
 
 
 # ── Static files (must be last) ────────────────────────────────────────────────
