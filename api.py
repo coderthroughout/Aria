@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -143,6 +145,72 @@ async def get_result(thread_id: str):
     return {"status": session.get("status"), "final_memo": session.get("final_memo")}
 
 
+# ── Omium trace sender ─────────────────────────────────────────────────────────
+
+async def _push_omium_trace(
+    thread_id: str,
+    target: str,
+    acquirer: str,
+    deal_size: Optional[float],
+    start_time: float,
+    status: str,
+    error: Optional[str],
+) -> None:
+    """Send a single pipeline span directly to the Omium ingest API."""
+    if not settings.omium_api_key:
+        return
+    try:
+        import httpx as _httpx
+
+        now = time.time()
+        trace_id = str(uuid.uuid4())
+        span_id = str(uuid.uuid4())
+        start_iso = datetime.fromtimestamp(start_time, tz=timezone.utc).isoformat()
+        end_iso = datetime.fromtimestamp(now, tz=timezone.utc).isoformat()
+        duration_ms = max(1, int((now - start_time) * 1000))
+
+        attributes: dict = {
+            "span_type": "agent",
+            "workflow_id": "aria",
+            "target": target,
+            "acquirer": acquirer,
+        }
+        if deal_size is not None:
+            attributes["deal_size_usd"] = deal_size
+        if error:
+            attributes["error"] = error[:500]
+
+        payload = {
+            "project": "aria",
+            "execution_id": thread_id,
+            "spans": [{
+                "span_id": span_id,
+                "trace_id": trace_id,
+                "parent_span_id": None,
+                "name": "aria.pipeline",
+                "service_name": "omium-sdk",
+                "start_time": start_iso,
+                "end_time": end_iso,
+                "duration_ms": duration_ms,
+                "status": status,
+                "status_message": error[:200] if error else None,
+                "attributes": attributes,
+                "events": [],
+            }],
+            "sdk_version": "0.3.6",
+            "metadata": {"workflow_id": "aria", "trace_id": trace_id},
+        }
+
+        async with _httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(
+                "https://api.omium.ai/api/v1/traces/ingest",
+                json=payload,
+                headers={"X-API-Key": settings.omium_api_key},
+            )
+    except Exception:
+        pass  # observability must never break the app
+
+
 # ── Pipeline runner ────────────────────────────────────────────────────────────
 
 async def _run_pipeline(thread_id: str, req: AnalyzeRequest, session: dict):
@@ -160,25 +228,9 @@ async def _run_pipeline(thread_id: str, req: AnalyzeRequest, session: dict):
         except Exception:
             pass
 
-    # ── Explicit Omium pipeline span ───────────────────────────────────────────
-    # _patched_astream flushes before the root span is committed to _spans (SDK
-    # ordering bug), so we send our own reliable top-level span here instead.
-    _o_tracer = None
-    _o_cm = None
-    _o_span = None
-    if settings.omium_api_key:
-        try:
-            from omium.integrations.tracer import OmiumTracer
-            _o_tracer = OmiumTracer(execution_id=thread_id, project="aria")
-            _o_cm = _o_tracer.span(
-                "aria.pipeline",
-                span_type="agent",
-                target=req.target_company,
-                acquirer=req.acquirer_company,
-            )
-            _o_span = _o_cm.__enter__()
-        except Exception:
-            pass
+    _pipeline_start = time.time()
+    _pipeline_status = "ok"
+    _pipeline_error: Optional[str] = None
 
     try:
         from dotenv import load_dotenv
@@ -283,30 +335,26 @@ async def _run_pipeline(thread_id: str, req: AnalyzeRequest, session: dict):
         await push({"type": "done", "final_memo": final_memo})
 
     except Exception as exc:
-        if _o_span is not None:
-            try:
-                _o_span.set_error(exc)
-            except Exception:
-                pass
+        _pipeline_status = "error"
         import traceback
+        _pipeline_error = traceback.format_exc()
         session["status"] = "error"
         await push({
             "type": "error",
             "message": str(exc),
-            "detail": traceback.format_exc(),
+            "detail": _pipeline_error,
         })
 
     finally:
-        if _o_cm is not None:
-            try:
-                _o_cm.__exit__(None, None, None)  # commits span to _spans
-            except Exception:
-                pass
-        if _o_tracer is not None:
-            try:
-                await _o_tracer.aflush()  # sends immediately, after span is committed
-            except Exception:
-                pass
+        await _push_omium_trace(
+            thread_id=thread_id,
+            target=req.target_company,
+            acquirer=req.acquirer_company,
+            deal_size=req.deal_size_usd,
+            start_time=_pipeline_start,
+            status=_pipeline_status,
+            error=_pipeline_error,
+        )
 
 
 # ── Static files (must be last) ────────────────────────────────────────────────
