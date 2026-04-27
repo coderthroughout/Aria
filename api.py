@@ -4,6 +4,7 @@ import asyncio
 import json
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -18,8 +19,24 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
+from config import settings
+
+
+# ── Omium init ─────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if settings.omium_api_key:
+        try:
+            import omium
+            omium.init(api_key=settings.omium_api_key, project="ARIA")
+            omium.instrument_langgraph()
+        except Exception:
+            pass  # Omium is observability — never let it break the app
+    yield
+
+
 # ── Session store ──────────────────────────────────────────────────────────────
-# Each thread_id → { queue, review_future, final_memo, status }
 _sessions: dict[str, dict] = {}
 
 
@@ -50,7 +67,7 @@ class ReviewRequest(BaseModel):
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="ARIA API", version="1.0.0")
+app = FastAPI(title="ARIA API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,7 +81,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "aria-api"}
+    return {"status": "ok", "service": "aria-api", "omium": bool(settings.omium_api_key)}
 
 
 @app.post("/api/analyze")
@@ -133,6 +150,15 @@ async def _run_pipeline(thread_id: str, req: AnalyzeRequest, session: dict):
 
     async def push(event: dict):
         await queue.put(event)
+
+    # Correlate this run with Omium so CLI commands like
+    # `omium show <thread_id>` and `omium logs <thread_id>` work.
+    if settings.omium_api_key:
+        try:
+            import omium
+            omium.set_execution_id(thread_id)
+        except Exception:
+            pass
 
     try:
         from dotenv import load_dotenv

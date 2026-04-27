@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     checkpoint_backend: str = "memory"
     postgres_url: Optional[str] = None
 
+    # ── Omium ─────────────────────────────────────────────────────────────────
+    omium_api_key: str = ""
+
     # ── Output ────────────────────────────────────────────────────────────────
     output_dir: str = "outputs"
 
